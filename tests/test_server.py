@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from fastmcp import Client
+from ruamel.yaml import YAML
 
 
 def make_server(root: Path):
@@ -72,6 +73,96 @@ def test_list_projects_reports_counts(fixture_dir: Path) -> None:
             assert fixture_proj["counts"]["model"] >= 4
 
     asyncio.run(check())
+
+
+def test_write_yaml_replace_existing_exposure_touches_own_file(fixture_dir: Path) -> None:
+    mcp = make_server(fixture_dir.parent)
+    exposures = fixture_dir / "models/exposures.yml"
+    original = exposures.read_text()
+    new_file = fixture_dir / "models/_enrollment_dashboard.yml"
+
+    async def check() -> None:
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "write_yaml",
+                {
+                    "resource_type": "exposure",
+                    "name": "enrollment_dashboard",
+                    "entry": {
+                        "name": "enrollment_dashboard",
+                        "type": "dashboard",
+                        "owner": {"email": "nobody@example.com"},
+                        "depends_on": ["ref('fct_enrollments')"],
+                        "description": "Updated.",
+                    },
+                },
+            )
+            diff = result.content[0].text
+            assert "models/exposures.yml" in diff
+            assert not new_file.exists()
+
+    try:
+        asyncio.run(check())
+    finally:
+        exposures.write_text(original)
+        if new_file.exists():
+            new_file.unlink()
+
+
+def test_edit_yaml_on_source_table(fixture_dir: Path) -> None:
+    mcp = make_server(fixture_dir.parent)
+    sources = fixture_dir / "models/sources.yml"
+    original = sources.read_text()
+
+    async def check() -> None:
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "edit_yaml",
+                {
+                    "resource_type": "source",
+                    "name": "raw.students",
+                    "fields": {"description": "Updated raw student rows."},
+                },
+            )
+            diff = result.content[0].text
+            assert "models/sources.yml" in diff
+            assert "Updated raw student rows." in diff
+
+    try:
+        asyncio.run(check())
+    finally:
+        sources.write_text(original)
+
+
+def test_write_yaml_creates_source_table_via_server(fixture_dir: Path) -> None:
+    mcp = make_server(fixture_dir.parent)
+    sources = fixture_dir / "models/sources.yml"
+    original = sources.read_text()
+
+    async def check() -> None:
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "write_yaml",
+                {
+                    "resource_type": "source",
+                    "name": "raw.applications",
+                    "entry": {"name": "applications", "description": "New raw table."},
+                },
+            )
+            diff = result.content[0].text
+            assert "models/sources.yml" in diff
+            doc = YAML().load(sources.read_text())
+            assert len(doc["sources"]) == 1
+            raw = doc["sources"][0]
+            assert raw["name"] == "raw"
+            table_names = [t["name"] for t in raw["tables"]]
+            assert "applications" in table_names
+            assert "students" in table_names
+
+    try:
+        asyncio.run(check())
+    finally:
+        sources.write_text(original)
 
 
 def test_list_projects_null_counts_when_never_parsed(tmp_path: Path) -> None:

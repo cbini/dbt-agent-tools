@@ -54,10 +54,17 @@ def _column_entry(col: dict, manifest: dict, unique_id: str, col_name: str) -> d
 
 def _cap(payload: dict, cap: int | None) -> str:
     text = json.dumps(payload, default=str)
-    if cap and len(text) > cap:
-        truncated = json.dumps({"truncated": _MARK, "content": text[: cap - 100]})
-        return truncated
-    return text
+    if not cap or len(text) <= cap:
+        return text
+    # JSON-escaping the sliced content (quotes, backslashes) can re-expand it
+    # past cap, so shrink and re-dump until the wrapped result actually fits.
+    slice_len = max(cap - 100, 0)
+    while True:
+        wrapped = json.dumps({"truncated": _MARK, "content": text[:slice_len]})
+        overshoot = len(wrapped) - cap
+        if overshoot <= 0 or slice_len == 0:
+            return wrapped
+        slice_len = max(slice_len - overshoot, 0)
 
 
 def render_node(

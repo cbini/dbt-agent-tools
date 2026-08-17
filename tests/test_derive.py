@@ -8,7 +8,7 @@ def test_keys_from_primary_key(fixture_manifest: dict) -> None:
 
 def test_joins_from_relationships(fixture_manifest: dict) -> None:
     facts = derived_facts(fixture_manifest, "model.fixture_proj.stg_students")
-    assert facts["joins"] == {"dim_schools": "school_id"}
+    assert facts["joins"] == {"school_id": {"to": "dim_schools", "field": "school_id"}}
 
 
 def test_enums_from_accepted_values(fixture_manifest: dict) -> None:

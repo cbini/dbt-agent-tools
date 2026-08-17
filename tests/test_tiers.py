@@ -39,7 +39,7 @@ def test_summary_cap() -> None:
             "model.p.big": {
                 "resource_type": "model",
                 "name": "big",
-                "description": "x" * 5000,
+                "description": '"x": "y", ' * 500,
                 "config": {"meta": {}},
                 "refs": [],
                 "columns": {},
@@ -51,4 +51,4 @@ def test_summary_cap() -> None:
     out_str = render_node(manifest, "model.p.big", "summary", None)
     out = json.loads(out_str)
     assert out["truncated"] == "[truncated — narrow your request]"
-    assert len(out_str) <= 1250
+    assert len(out_str) <= 1200

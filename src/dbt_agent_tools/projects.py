@@ -26,8 +26,11 @@ def discover_projects(root: Path) -> dict[str, ProjectInfo]:
         parts = pf.relative_to(root).parts[:-1]
         if any(p in _SKIP or p.startswith(".") for p in parts):
             continue
-        with pf.open() as fh:
-            data = _yaml_safe.load(fh) or {}
+        try:
+            with pf.open() as fh:
+                data = _yaml_safe.load(fh) or {}
+        except Exception:
+            continue
         name = data.get("name")
         if name:
             projects[name] = ProjectInfo(name=name, path=pf.parent)
@@ -59,6 +62,8 @@ class Project:
         self.info = info
         self.path = info.path
         self.dbt_cmd = dbt_cmd or dbt_command()
+        self._cached: dict | None = None
+        self._cached_mtime: float | None = None
 
     def _manifest_path(self) -> Path:
         return self.path / "target" / "manifest.json"
@@ -96,4 +101,8 @@ class Project:
         mp = self._manifest_path()
         if not mp.exists() or mp.stat().st_mtime < self._newest_source_mtime():
             self.parse()
-        return json.loads(mp.read_text())
+        mtime = mp.stat().st_mtime
+        if self._cached is None or self._cached_mtime != mtime:
+            self._cached = json.loads(mp.read_text())
+            self._cached_mtime = mtime
+        return self._cached

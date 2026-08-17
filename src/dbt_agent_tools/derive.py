@@ -17,6 +17,8 @@ def derived_facts(manifest: dict, unique_id: str) -> dict:
         node = manifest.get("sources", {}).get(unique_id, {})
     elif unique_id.startswith("exposure."):
         node = manifest.get("exposures", {}).get(unique_id, {})
+    elif unique_id.startswith("macro."):
+        node = manifest.get("macros", {}).get(unique_id, {})
     else:
         node = manifest.get("nodes", {}).get(unique_id, {})
     facts: dict = {}
@@ -46,7 +48,7 @@ def derived_facts(manifest: dict, unique_id: str) -> dict:
         column = test.get("column_name") or kwargs.get("column_name")
         if tm.get("name") == "relationships":
             if m := _REF_IN_KWARG.search(kwargs.get("to", "")):
-                joins[m.group(1)] = kwargs.get("field")
+                joins[column] = {"to": m.group(1), "field": kwargs.get("field")}
         elif tm.get("name") == "accepted_values" and column:
             enums[column] = kwargs.get("values", [])
     if joins:

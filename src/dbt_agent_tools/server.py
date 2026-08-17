@@ -78,7 +78,12 @@ def list_projects() -> str:
     out = []
     for name, proj in sorted(_projects.items()):
         manifest_path = proj.path / "target" / "manifest.json"
-        counts = _manifest_counts(json.loads(manifest_path.read_text())) if manifest_path.exists() else None
+        counts = None
+        if manifest_path.exists():
+            try:
+                counts = _manifest_counts(json.loads(manifest_path.read_text()))
+            except (ValueError, OSError):
+                counts = None
         out.append({"project": name, "path": str(proj.path), "counts": counts})
     return json.dumps(out)
 
@@ -243,12 +248,25 @@ def write_yaml(
     """Create or FULLY REPLACE a node's property YAML entry. Replacement is
     also how fields are removed. For partial updates use edit_yaml. The node
     must exist in the manifest (a new model's SQL file is picked up by the
-    staleness auto-parse). Returns a unified diff — review it."""
+    staleness auto-parse) — except source tables and exposures, which enter
+    the manifest only once their YAML exists, so a new one is created here.
+    Returns a unified diff — review it."""
     located = _locate(name, project)
     if isinstance(located, str):
-        return located
-    proj, manifest, _, _ = located
-    return write_entry(proj.path, manifest, resource_type, name, entry) or "no change"
+        if resource_type not in ("source", "exposure"):
+            return located
+        proj = _project(project)
+        if isinstance(proj, str):
+            return proj
+        manifest = _manifest_or_error(proj)
+        if isinstance(manifest, str):
+            return manifest
+    else:
+        proj, manifest, _, _ = located
+    try:
+        return write_entry(proj.path, manifest, resource_type, name, entry) or "no change"
+    except Exception as exc:
+        return f"error: write_yaml failed: {exc}"
 
 
 @mcp.tool(annotations={"title": "Edit property YAML entry"})

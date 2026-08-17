@@ -11,6 +11,7 @@ from .nodes import find_node
 yaml_rt = YAML()
 yaml_rt.preserve_quotes = True
 yaml_rt.indent(mapping=2, sequence=4, offset=2)
+yaml_rt.width = 4096
 
 _SECTION = {
     "model": "models",
@@ -30,15 +31,13 @@ def _patch_file(project_dir: Path, manifest: dict, name: str) -> Path | None:
     if not found:
         return None
     patch = found[1].get("patch_path")  # "project://models/x.yml"
-    if not patch:
-        return None
-    return project_dir / patch.split("://", 1)[1]
-
-
-def _source_file(project_dir: Path, manifest: dict, source_name: str) -> Path | None:
-    for node in manifest.get("sources", {}).values():
-        if node.get("source_name") == source_name and node.get("original_file_path"):
-            return project_dir / node["original_file_path"]
+    if patch:
+        return project_dir / patch.split("://", 1)[1]
+    # sources and exposures carry no patch_path — their own file IS the
+    # properties file, so fall back to it instead of inventing a new one.
+    ofp = found[1].get("original_file_path") or ""
+    if ofp.endswith((".yml", ".yaml")):
+        return project_dir / ofp
     return None
 
 
@@ -46,6 +45,14 @@ def _default_file(project_dir: Path, manifest: dict, name: str) -> Path:
     found = find_node(manifest, name)
     if found and found[1].get("original_file_path"):
         return project_dir / Path(found[1]["original_file_path"]).parent / f"_{name}.yml"
+    if "." in name:
+        # New table under an existing source: the table itself isn't in the
+        # manifest yet, but a sibling table's file is — nest it there instead
+        # of inventing a new file.
+        source_name = name.split(".", 1)[0]
+        for node in manifest.get("sources", {}).values():
+            if node.get("source_name") == source_name and node.get("original_file_path"):
+                return project_dir / node["original_file_path"]
     return project_dir / "models" / f"_{name}.yml"
 
 
@@ -104,8 +111,6 @@ def write_entry(
     project_dir: Path, manifest: dict, resource_type: str, name: str, entry: dict
 ) -> str:
     path = _patch_file(project_dir, manifest, name)
-    if not path and resource_type == "source" and "." in name:
-        path = _source_file(project_dir, manifest, name.split(".", 1)[0])
     path = path or _default_file(project_dir, manifest, name)
     if path.exists():
         with path.open() as fh:

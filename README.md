@@ -18,7 +18,7 @@ Or manually, by adding to your `.mcp.json`:
   "mcpServers": {
     "dbt-agent-tools": {
       "command": "uv",
-      "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "dbt-agent-tools"]
+      "args": ["run", "--no-dev", "--project", "${CLAUDE_PLUGIN_ROOT}", "dbt-agent-tools"]
     }
   }
 }
