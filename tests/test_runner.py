@@ -1,4 +1,9 @@
+import os
+import subprocess
+import time
 from pathlib import Path
+
+import pytest
 
 from dbt_agent_tools.projects import Project, ProjectInfo
 from dbt_agent_tools.runner import BUILD_SUBCOMMANDS, INSPECT_SUBCOMMANDS, run_dbt
@@ -42,3 +47,30 @@ def test_failure_reports_first_error(fixture_dir: Path) -> None:
     out = run_dbt(make(fixture_dir), "run", BUILD_SUBCOMMANDS, select="fct_enrollments")
     assert out["status"] == "error"
     assert out["failures"] and "fct_enrollments" in out["failures"][0]["node"]
+
+
+def test_forbidden_arg_equals_form_rejected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def fake_run(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("subprocess.run should not be called for a rejected arg")
+
+    monkeypatch.setattr("dbt_agent_tools.runner.subprocess.run", fake_run)
+    out = run_dbt(make(tmp_path), "ls", INSPECT_SUBCOMMANDS, args=["--project-dir=/etc"])
+    assert "error" in out
+
+
+def test_stale_run_results_not_reported(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    stale = target / "run_results.json"
+    stale.write_text('{"results": [{"status": "success", "unique_id": "model.p.old"}]}')
+    old = time.time() - 1000
+    os.utime(stale, (old, old))
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess:
+        # dbt died before writing a fresh run_results.json; the pre-existing
+        # (stale) file must not be reported as this call's result.
+        return subprocess.CompletedProcess(cmd, returncode=2, stdout="boom", stderr="")
+
+    monkeypatch.setattr("dbt_agent_tools.runner.subprocess.run", fake_run)
+    out = run_dbt(make(tmp_path), "run", BUILD_SUBCOMMANDS)
+    assert out == {"status": "error", "message": "boom"}
