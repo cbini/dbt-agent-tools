@@ -1,6 +1,6 @@
 # dbt-agent-tools
 
-A structured, queryable interface to dbt projects for Claude agents — progressive-disclosure dbt docs, guarded CLI execution, and YAML authoring tools.
+A structured, queryable CLAUDE.md for dbt — progressive-disclosure dbt docs, guarded CLI execution, and YAML authoring tools for agents.
 
 ## Install
 
@@ -36,13 +36,13 @@ Set environment variables in your Claude Code settings or shell:
 | Tool | Purpose |
 |------|---------|
 | `list_projects` | List dbt projects in the workspace. |
-| `list_nodes` | List models, tests, macros, and other nodes with optional filtering. |
+| `list_nodes` | List models, sources, seeds, snapshots, exposures, macros — names + one-line summary; filterable by resource_type, substring pattern, stale_meta. |
 | `get_node` | Retrieve node details (summary, columns, or full metadata). |
 | `lineage` | Trace upstream/downstream dependencies for a node. |
-| `resolve` | Map dbt node selector expressions to matching nodes. |
+| `resolve` | Resolve a single ref('x') / source('a','b') / bare name to its node — unique_id, file path, relation name. |
 | `dbt_inspect` | Run dbt parse, compile, show, or ls commands for workspace inspection. |
 | `dbt_build` | Execute dbt build, run, test, snapshot, or seed commands. |
-| `write_yaml` | Create a new property YAML file (models, sources, metrics). |
+| `write_yaml` | Create or fully replace a property YAML entry for model, seed, snapshot, source, exposure — returns a unified diff. |
 | `edit_yaml` | Update an existing property YAML file. |
 
 ## YAML Authoring Contract
