@@ -56,14 +56,30 @@ def _locate(name: str, project: str | None) -> tuple[Project, dict, str, dict] |
     return proj, manifest, found[0], found[1]
 
 
+def _manifest_counts(manifest: dict) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    sections = {"nodes": None, "sources": "source", "exposures": "exposure", "macros": "macro"}
+    for section, forced_type in sections.items():
+        for node in manifest.get(section, {}).values():
+            rtype = forced_type or node.get("resource_type")
+            if rtype == "test":
+                continue
+            counts[rtype] = counts.get(rtype, 0) + 1
+    return counts
+
+
 @mcp.tool(
     annotations={"title": "List dbt projects", "readOnlyHint": True, "idempotentHint": True}
 )
 def list_projects() -> str:
-    """List discovered dbt projects with node counts. Read-only; does not parse."""
+    """List discovered dbt projects with name, path, and node counts by type.
+    Counts come from the last parse's target/manifest.json (may be stale);
+    null when the project has never been parsed. Read-only; does not parse."""
     out = []
     for name, proj in sorted(_projects.items()):
-        out.append({"project": name, "path": str(proj.path)})
+        manifest_path = proj.path / "target" / "manifest.json"
+        counts = _manifest_counts(json.loads(manifest_path.read_text())) if manifest_path.exists() else None
+        out.append({"project": name, "path": str(proj.path), "counts": counts})
     return json.dumps(out)
 
 
@@ -130,11 +146,14 @@ def get_node(
     if isinstance(located, str):
         return located
     _, manifest, uid, node = located
-    checksum = node.get("checksum", {}).get("checksum", "")
-    rendered = json.loads(render_node(manifest, uid, detail, columns))
-    if checksum:
-        rendered["checksum_prefix"] = checksum[:12]
-    return json.dumps(rendered)
+    try:
+        checksum = node.get("checksum", {}).get("checksum", "")
+        rendered = json.loads(render_node(manifest, uid, detail, columns))
+        if checksum:
+            rendered["checksum_prefix"] = checksum[:12]
+        return json.dumps(rendered)
+    except Exception as exc:
+        return f"error: get_node failed: {exc}"
 
 
 @mcp.tool(
@@ -169,7 +188,8 @@ def resolve(ref_or_source: str, project: str | None = None) -> str:
         return manifest
     found = resolve_ref(manifest, ref_or_source)
     if not found:
-        return f"error: could not resolve {ref_or_source!r}"
+        hints = suggest_names(manifest, ref_or_source)
+        return f"error: could not resolve {ref_or_source!r}; close matches: {hints}"
     uid, node = found
     return json.dumps(
         {"unique_id": uid, "path": node.get("original_file_path"),
