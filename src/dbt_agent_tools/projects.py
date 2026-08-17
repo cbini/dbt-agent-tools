@@ -76,9 +76,9 @@ class Project:
     def parse(self) -> None:
         # dbt does not auto-read profiles.yml from the project dir; point it
         # there explicitly when the project ships one (see tests/conftest.py).
-        env = os.environ
+        env = dict(os.environ)
         if (self.path / "profiles.yml").exists():
-            env = os.environ | {"DBT_PROFILES_DIR": str(self.path)}
+            env["DBT_PROFILES_DIR"] = str(self.path)
         proc = subprocess.run(
             [*self.dbt_cmd, "parse", "--log-format", "json"],
             cwd=self.path,
