@@ -127,21 +127,28 @@ columns tier; sources and seeds have no lineage upstream.
   counts, failing node names, first error message per failing node, elapsed
   time. `show` results row-capped (default 20).
 
-### Write tool (development side)
+### Write tools (development side)
 
-`upsert_yaml(project, resource_type, name, fields)`
+Two tools mirroring the Write/Edit verbs agents already know:
 
-- Works for any resource type with property YAML: models, sources (source +
-  table addressing), seeds, snapshots, exposures, macros, singular tests.
-- `fields` is a structured patch: any of `description`, `columns` (add or
+- `write_yaml(project, resource_type, name, entry)` — create a node's
+  property entry, or fully replace an existing one. Creating places the
+  entry in the project's conventional properties file location
+  (configurable pattern; default: sibling `_{name}.yml`). Full replacement
+  is also how fields get removed.
+- `edit_yaml(project, resource_type, name, fields)` — merge a structured
+  patch into the existing entry: any of `description`, `columns` (add or
   update by name, each column accepting its own `meta.claude`), `tests`,
-  `meta.claude`, `config` keys — whichever apply to the resource type.
-- Server edits with `ruamel.yaml` in round-trip mode — comments, key order,
-  and anchors in untouched regions survive.
-- If the node has no property entry, the server creates one (in the
-  project's conventional properties file location, configurable pattern;
-  default: sibling `_{name}.yml`).
-- Returns a unified diff of the change — the diff is what the agent and the
+  `meta.claude`, `config` keys — whichever apply to the resource type. No
+  existing entry is an error that points at `write_yaml`.
+
+Both:
+
+- Work for any resource type with property YAML: models, sources (source +
+  table addressing), seeds, snapshots, exposures, macros, singular tests.
+- Edit with `ruamel.yaml` in round-trip mode — comments, key order, and
+  anchors in untouched regions survive.
+- Return a unified diff of the change — the diff is what the agent and the
   human review, not the file.
 
 ## The `meta.claude` contract
@@ -193,7 +200,8 @@ itself).
 
 **Authoring:** a companion skill (shipped in this plugin) drives generation —
 the agent reads the node source and human docs, drafts the `meta.claude`
-content, writes it via `upsert_yaml`, and a human reviews the PR diff.
+content, writes it via `write_yaml`/`edit_yaml`, and a human reviews the PR
+diff.
 Humans are never expected to hand-write token-optimized blocks; drift heals
 because generation is re-runnable against stale fingerprints.
 
@@ -214,7 +222,8 @@ because generation is re-runnable against stale fingerprints.
   an exposure, stale meta, column-level meta, no property file.
 - pytest covers: tier outputs and their token bounds, staleness detection,
   ref/source resolution, YAML round-trip fidelity (comments survive an
-  upsert), run-lock behavior, JSON-log parsing against recorded dbt output.
+  an edit), run-lock behavior, JSON-log parsing against recorded dbt
+  output.
 - Real-world validation: point the server at a large multi-project monorepo
   and spot-check; not part of CI here.
 
