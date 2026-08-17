@@ -1,0 +1,19 @@
+[project]
+name = "dbt-agent-tools"
+version = "0.1.0"
+description = "MCP server for agentic dbt development"
+requires-python = ">=3.11"
+dependencies = ["fastmcp>=3", "ruamel.yaml>=0.18"]
+
+[project.scripts]
+dbt-agent-tools = "dbt_agent_tools.server:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "dbt-core>=1.8", "dbt-duckdb>=1.8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dbt_agent_tools"]
