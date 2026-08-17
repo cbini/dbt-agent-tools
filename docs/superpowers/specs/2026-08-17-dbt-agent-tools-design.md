@@ -101,10 +101,14 @@ facts already encoded in standard dbt YAML (read from the manifest) and
 layers the `meta.claude` block on top. `meta.claude` never restates what a
 test or property already says.
 
-Derived facts per node: keys (from `unique` /
-`dbt_utils.unique_combination_of_columns` tests), join paths (from
-`relationships` tests), enum values (from `accepted_values` tests),
-refs/sources, materialization, first line of description.
+Derived facts per node, all direct manifest reads (verified against a real
+19MB manifest): keys (dbt precomputes `primary_key` per node from
+uniqueness tests/constraints), join paths (test nodes with
+`test_metadata.name == "relationships"` attached via `attached_node`), enum
+values (`accepted_values` test kwargs), refs/sources, materialization,
+`access`/`deprecation_date` when set, first line of description. Lineage
+reads the precomputed `parent_map`/`child_map`; the write tools locate each
+node's YAML via `patch_path`.
 
 - `summary` (default): the derived facts above + the node's `meta.claude`
   block. Includes a staleness flag when the fingerprint mismatches.
@@ -181,7 +185,7 @@ models:
     meta:
       claude:
         v: 1
-        fingerprint: a1b2c3d4e5f6 # sha256[:12] of the node's source file
+        fingerprint: a1b2c3d4e5f6 # prefix of dbt's own node checksum
         grain: one row per student per term # interpretation, not column list
         filters:
           - point-in-time queries need academic_year = current
@@ -212,10 +216,12 @@ Field notes:
   separate field.
 
 Column-level blocks are fully free-form — no `v` or `fingerprint`; the
-node-level fingerprint governs staleness for the whole entry (it hashes the
-node's source file — SQL for models/snapshots/tests, the seed file for
-seeds; sources and exposures, having no source file, use the property entry
-itself).
+node-level fingerprint governs staleness for the whole entry. It is a
+prefix of the `checksum` dbt already computes per node (sha256 of the
+node's source file), captured at authoring time — the server compares it to
+the current manifest checksum, computing nothing itself. Sources and
+exposures, whose manifest entries carry no file checksum, fingerprint the
+property entry itself.
 
 **Staleness:** on fingerprint mismatch, `get_node` flags the block stale and
 `list_nodes(stale_meta=true)` enumerates regeneration targets.
