@@ -1,0 +1,11 @@
+[
+  { "query": "add a meta.claude block to stg_powerschool__students", "should_trigger": true },
+  { "query": "get_node says fct_enrollments has stale_meta true, fix it", "should_trigger": true },
+  { "query": "document our int_extracts models so claude stops misreading the grain", "should_trigger": true },
+  { "query": "onboard the finance dbt project to dbt-agent-tools", "should_trigger": true },
+  { "query": "i just rewrote fct_attendance.sql, refresh its agent docs", "should_trigger": true },
+  { "query": "write a description for stg_students for our dbt docs site", "should_trigger": false },
+  { "query": "add a unique test on student_id in stg_students", "should_trigger": false },
+  { "query": "why is dbt build failing on fct_enrollments", "should_trigger": false },
+  { "query": "update CLAUDE.md with what we learned this session", "should_trigger": false }
+]
