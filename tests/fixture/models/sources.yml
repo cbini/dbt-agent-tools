@@ -1,0 +1,7 @@
+sources:
+  - name: raw
+    schema: main
+    description: Raw landing zone.
+    tables:
+      - name: students
+        description: Raw student rows from the SIS.

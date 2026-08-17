@@ -1,0 +1,45 @@
+models:
+  - name: stg_students
+    description: One row per student, cleaned from the raw SIS extract.
+    meta:
+      claude:
+        v: 1
+        fingerprint: REPLACED_IN_CONFTEST
+        grain: one row per student
+        filters:
+          - active students only; withdrawn rows kept for history
+        gotchas:
+          - exit_code blank before 2021, not null-safe
+    columns:
+      - name: student_id
+        description: Surrogate student key.
+        data_tests:
+          - unique
+          - not_null
+      - name: exit_code
+        description: Exit status code.
+        meta:
+          claude:
+            enum: { W: withdrew, G: graduated }
+        data_tests:
+          - accepted_values:
+              values: [W, G]
+      - name: school_id
+        data_tests:
+          - relationships:
+              to: ref('dim_schools')
+              field: school_id
+  - name: dim_schools
+    description: One row per school.
+    columns:
+      - name: school_id
+        data_tests:
+          - unique
+          - not_null
+  - name: fct_enrollments
+    description: Student-school enrollment facts.
+    meta:
+      claude:
+        v: 1
+        fingerprint: "000000000000"
+        grain: one row per student per school

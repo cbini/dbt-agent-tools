@@ -1,0 +1,7 @@
+exposures:
+  - name: enrollment_dashboard
+    type: dashboard
+    owner:
+      email: nobody@example.com
+    depends_on:
+      - ref('fct_enrollments')
