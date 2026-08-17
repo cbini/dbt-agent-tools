@@ -1,0 +1,6 @@
+{
+  "name": "dbt-agent-tools",
+  "description": "Progressive-disclosure dbt docs, guarded CLI exec, and structured YAML authoring for agents",
+  "version": "0.1.0",
+  "author": { "name": "Charlie Bini" }
+}
