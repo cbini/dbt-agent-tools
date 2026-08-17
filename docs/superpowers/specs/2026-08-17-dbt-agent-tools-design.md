@@ -35,7 +35,9 @@ Existing tools don't cover this:
    dbt object without the agent reading or rewriting large files.
 4. **A documentation channel optimized for agents** — a `meta.claude` block,
    token-dense and machine-shaped, kept separate from human-facing dbt
-   properties.
+   properties. In one line: a structured, queryable CLAUDE.md for dbt
+   objects — retrieved per node on demand instead of loaded wholesale, and
+   fingerprinted so it announces its own staleness.
 
 **General-purpose:** works on any dbt project by reading `dbt_project.yml`
 and `target/manifest.json` generically. No assumptions about repo layout
@@ -214,6 +216,19 @@ Field notes:
   `accepted_values` test. Written only when meanings aren't obvious.
 - Cross-references ("use X instead") are gotchas that name a node — no
   separate field.
+
+**How agents learn the contract:** field semantics live in one canonical
+document in this repo (`docs/meta-claude-contract.md`, version-keyed by
+`v`), and reach agents through the two surfaces they already load:
+
+- **Read side** — the `get_node` tool description defines each field's
+  meaning. MCP tool descriptions sit in the agent's context for free, so
+  interpretation costs no extra retrieval.
+- **Write side** — the authoring skill embeds the same definitions plus
+  style rules for token-dense phrasing.
+
+Both surfaces are generated from (or reviewed against) the canonical doc so
+they cannot drift from each other.
 
 Column-level blocks are fully free-form — no `v` or `fingerprint`; the
 node-level fingerprint governs staleness for the whole entry. It is a
