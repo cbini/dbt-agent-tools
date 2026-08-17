@@ -96,12 +96,18 @@ source table, seed, snapshot, exposure, macro, or singular test.
 | `lineage(name, direction, depth=1)` | Node names only, depth-capped |
 | `resolve(ref_or_source)` | ref/source string → node, file path, relation name |
 
-`get_node` tiers:
+`get_node` tiers. Every tier is **derived + curated**: the server composes
+facts already encoded in standard dbt YAML (read from the manifest) and
+layers the `meta.claude` block on top. `meta.claude` never restates what a
+test or property already says.
 
-- `summary` (default): the node's `meta.claude` block if present, else a
-  derived fallback — first line of description, materialization/loader,
-  refs, declared grain. Includes a staleness flag when the fingerprint
-  mismatches.
+Derived facts per node: keys (from `unique` /
+`dbt_utils.unique_combination_of_columns` tests), join paths (from
+`relationships` tests), enum values (from `accepted_values` tests),
+refs/sources, materialization, first line of description.
+
+- `summary` (default): the derived facts above + the node's `meta.claude`
+  block. Includes a staleness flag when the fingerprint mismatches.
 - `columns`: summary + per-column detail — name, type (from
   manifest/catalog when available), first line of the column description,
   tests, and the column's own `meta.claude` block if present. The optional
@@ -160,9 +166,11 @@ Two documentation channels with different audiences:
 - **`meta.claude`** — written for agents: token-dense, structured, no prose
   niceties. Not meant to be pleasant to read.
 
-`meta.claude` attaches at two levels: the node, and each column. Node-level
-holds grain, keys, joins, and cross-cutting gotchas; column-level holds
-per-column semantics — enumerations, encoding quirks, caveats.
+`meta.claude` attaches at two levels: the node, and each column. It holds
+only the **non-derivable residue** — context that standard dbt YAML cannot
+express. Anything a test can encode belongs in a test (see the authoring
+principle below): keys, join paths, and enum value lists are all derived,
+never declared here.
 
 Node-level schema (v1 — server validates only `v` and `fingerprint`; all
 other fields are free-form by convention):
@@ -174,12 +182,13 @@ models:
       claude:
         v: 1
         fingerprint: a1b2c3d4e5f6 # sha256[:12] of the node's source file
-        grain: one row per student per term
-        keys: [student_number, academic_year, term]
-        joins: { students: student_number, terms: [academic_year, term] }
+        grain: one row per student per term # interpretation, not column list
+        filters:
+          - point-in-time queries need academic_year = current
+          - active students = enrollment_status = 0
         gotchas:
           - null term = year-long enrollment, not missing data
-        see: [int_extracts__student_enrollments]
+          - for term-level counts use int_extracts__course_enrollments_by_term
     columns:
       - name: exit_code
         meta:
@@ -188,6 +197,19 @@ models:
             gotchas:
               - blank before 2021, not null-safe
 ```
+
+Field notes:
+
+- `v` versions the meta.claude contract itself (not the model — dbt's
+  native model `versions:` govern the data contract and are unrelated).
+- `grain` is optional prose interpretation; the column list itself derives
+  from the uniqueness test.
+- `filters` are canonical predicates an agent should apply when querying —
+  not inferable from any standard property.
+- `enum` maps values to **meanings**; the bare value list derives from an
+  `accepted_values` test. Written only when meanings aren't obvious.
+- Cross-references ("use X instead") are gotchas that name a node — no
+  separate field.
 
 Column-level blocks are fully free-form — no `v` or `fingerprint`; the
 node-level fingerprint governs staleness for the whole entry (it hashes the
@@ -204,6 +226,12 @@ content, writes it via `write_yaml`/`edit_yaml`, and a human reviews the PR
 diff.
 Humans are never expected to hand-write token-optimized blocks; drift heals
 because generation is re-runnable against stale fingerprints.
+
+**Tests-first principle:** if context can be encoded as a standard dbt test,
+the authoring skill writes the test, not a meta field — a
+`unique_combination_of_columns` test is both enforcement and documentation.
+`meta.claude` gets only what tests and standard properties cannot say. This
+eliminates the worst drift risk: meta disagreeing with tests.
 
 ## Error handling
 
