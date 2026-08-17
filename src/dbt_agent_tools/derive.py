@@ -6,14 +6,19 @@ _REF_IN_KWARG = re.compile(r"ref\(\s*['\"]([^'\"]+)['\"]\s*\)")
 
 
 def _attached_tests(manifest: dict, unique_id: str):
+    # ponytail: linear scan per call, fine for now — build an attached_node index once per manifest if this gets called per-model at real project scale.
     for node in manifest.get("nodes", {}).values():
         if node.get("resource_type") == "test" and node.get("attached_node") == unique_id:
             yield node
 
 
 def derived_facts(manifest: dict, unique_id: str) -> dict:
-    section = "sources" if unique_id.startswith("source.") else "nodes"
-    node = manifest.get(section, {}).get(unique_id) or manifest.get("exposures", {}).get(unique_id, {})
+    if unique_id.startswith("source."):
+        node = manifest.get("sources", {}).get(unique_id, {})
+    elif unique_id.startswith("exposure."):
+        node = manifest.get("exposures", {}).get(unique_id, {})
+    else:
+        node = manifest.get("nodes", {}).get(unique_id, {})
     facts: dict = {}
 
     if desc := (node.get("description") or "").strip():
