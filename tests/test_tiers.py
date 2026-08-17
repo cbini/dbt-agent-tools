@@ -48,6 +48,7 @@ def test_summary_cap() -> None:
         "parent_map": {},
         "child_map": {},
     }
-    out = render_node(manifest, "model.p.big", "summary", None)
-    assert len(out) <= 1250
-    assert "[truncated — narrow your request]" in out
+    out_str = render_node(manifest, "model.p.big", "summary", None)
+    out = json.loads(out_str)
+    assert out["truncated"] == "[truncated — narrow your request]"
+    assert len(out_str) <= 1250
