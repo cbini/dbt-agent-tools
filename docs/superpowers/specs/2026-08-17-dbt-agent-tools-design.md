@@ -62,6 +62,13 @@ claude plugin marketplace add cbini/dotclaude
 claude plugin install dbt-agent-tools@dotclaude
 ```
 
+Local stdio is normally discouraged for distribution, but this server falls
+under the sanctioned exception: it must run on the developer's machine (it
+reads the uncommitted working tree and invokes the local dbt CLI), its
+audience — dbt developers — has a Python toolchain by definition, and
+Claude Code plugins are the supported channel for local stdio servers. MCPB
+bundling is the upgrade path if non-developer users ever need it.
+
 ### Data source: manifest-first
 
 On startup the server discovers dbt projects (any directory containing
@@ -125,12 +132,20 @@ node's YAML via `patch_path`.
 Tiers apply where they make sense per type: macros and exposures have no
 columns tier; sources and seeds have no lineage upstream.
 
-### Exec tool (CLI wrap)
+### Exec tools (CLI wrap)
 
-`dbt_run(project, subcommand, select?, args?)`
+Split read from write per MCP review criteria — one tool per side, never
+mixed, so hosts can auto-approve the safe one:
 
-- Subcommand allowlist: `parse`, `compile`, `build`, `test`, `run`, `show`,
-  `ls`. Nothing else.
+- `dbt_inspect(project, subcommand, select?, args?)` — no-side-effect
+  subcommands only: `parse`, `compile`, `show`, `ls`. Read-only annotated.
+- `dbt_build(project, subcommand, select?, args?)` — warehouse-mutating
+  subcommands: `build`, `run`, `test`, `snapshot`, `seed`. Requires host
+  confirmation.
+
+Both:
+
+- Enforce their subcommand allowlist server-side. Nothing else runs.
 - Server owns invocation: working directory, `--project-dir`, the project's
   Python environment (configurable command template, default `uv run dbt`).
 - One-run-per-project lock — concurrent runs against one `target/` corrupt
@@ -162,6 +177,21 @@ Both:
   anchors in untouched regions survive.
 - Return a unified diff of the change — the diff is what the agent and the
   human review, not the file.
+
+### Tool annotations, schemas, and descriptions
+
+- Every tool declares `title`, `readOnlyHint`, `destructiveHint`, and
+  `idempotentHint`. The five read tools and `dbt_inspect` are
+  `readOnlyHint: true`; `write_yaml` is `destructiveHint: true` (full
+  replacement overwrites); `edit_yaml` and `dbt_build` are neither
+  read-only nor destructive.
+- Parameter schemas are tight: enums for `resource_type`, `detail`, and
+  subcommands; bounded integers with defaults for `depth` and row caps;
+  every parameter carries a description.
+- Tool descriptions state what each tool does NOT do and name the sibling
+  that does ("get_node returns documentation, not warehouse rows — use
+  dbt_inspect with show for data"; "edit_yaml requires an existing entry —
+  use write_yaml to create one").
 
 ## The `meta.claude` contract
 
@@ -217,18 +247,17 @@ Field notes:
 - Cross-references ("use X instead") are gotchas that name a node — no
   separate field.
 
-**How agents learn the contract:** field semantics live in one canonical
-document in this repo (`docs/meta-claude-contract.md`, version-keyed by
-`v`), and reach agents through the two surfaces they already load:
+**How agents learn the contract:** field semantics live in exactly one
+place — the authoring skill's reference file
+(`skills/authoring/references/meta-claude-contract.md`, version-keyed by
+`v`) — and reach agents through the two surfaces they already load:
 
 - **Read side** — the `get_node` tool description defines each field's
-  meaning. MCP tool descriptions sit in the agent's context for free, so
-  interpretation costs no extra retrieval.
-- **Write side** — the authoring skill embeds the same definitions plus
-  style rules for token-dense phrasing.
-
-Both surfaces are generated from (or reviewed against) the canonical doc so
-they cannot drift from each other.
+  meaning. It is generated from the contract file at release time, so it
+  cannot drift. MCP tool descriptions sit in the agent's context for free.
+- **Write side** — the skill loads the contract file on demand
+  (skill-creator's progressive-disclosure pattern: SKILL.md stays short,
+  references load when needed) plus style rules for token-dense phrasing.
 
 Column-level blocks are fully free-form — no `v` or `fingerprint`; the
 node-level fingerprint governs staleness for the whole entry. It is a
@@ -254,6 +283,11 @@ the authoring skill writes the test, not a meta field — a
 `meta.claude` gets only what tests and standard properties cannot say. This
 eliminates the worst drift risk: meta disagreeing with tests.
 
+The skill's frontmatter description is trigger-optimized per skill-creator
+guidance (deliberately broad "use when" contexts — skills undertrigger by
+default) and validated with a trigger eval set of should/shouldn't-trigger
+prompts.
+
 ## Error handling
 
 - Parse failure → return dbt's first error message, not a traceback; read
@@ -275,6 +309,9 @@ eliminates the worst drift risk: meta disagreeing with tests.
   output.
 - Real-world validation: point the server at a large multi-project monorepo
   and spot-check; not part of CI here.
+- Authoring-skill evals (skill-creator loop) against the fixture project,
+  with objective assertions: fingerprint present and current, no fact
+  restated that a test already encodes, output parses against contract v1.
 
 ## Open questions (deferred to implementation plan)
 
