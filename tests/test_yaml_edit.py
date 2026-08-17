@@ -77,3 +77,24 @@ def test_edit_merges_columns_by_name(fixture_dir: Path, fixture_manifest: dict) 
 def test_edit_without_entry_raises(fixture_dir: Path, fixture_manifest: dict) -> None:
     with pytest.raises(NoEntryError, match="write_yaml"):
         edit_entry(fixture_dir, fixture_manifest, "model", "orphan_model", {"description": "x"})
+
+
+def test_write_creates_table_under_existing_source(fixture_dir: Path, fixture_manifest: dict) -> None:
+    sources = fixture_dir / "models/sources.yml"
+    original = sources.read_text()
+    try:
+        write_entry(
+            fixture_dir,
+            fixture_manifest,
+            "source",
+            "raw.applications",
+            {"name": "applications", "description": "New raw table."},
+        )
+        doc = _load(sources)
+        assert len(doc["sources"]) == 1
+        raw = doc["sources"][0]
+        assert raw["name"] == "raw"
+        table_names = [t["name"] for t in raw["tables"]]
+        assert "applications" in table_names
+    finally:
+        sources.write_text(original)

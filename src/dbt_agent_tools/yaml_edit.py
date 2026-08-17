@@ -35,6 +35,13 @@ def _patch_file(project_dir: Path, manifest: dict, name: str) -> Path | None:
     return project_dir / patch.split("://", 1)[1]
 
 
+def _source_file(project_dir: Path, manifest: dict, source_name: str) -> Path | None:
+    for node in manifest.get("sources", {}).values():
+        if node.get("source_name") == source_name and node.get("original_file_path"):
+            return project_dir / node["original_file_path"]
+    return None
+
+
 def _default_file(project_dir: Path, manifest: dict, name: str) -> Path:
     found = find_node(manifest, name)
     if found and found[1].get("original_file_path"):
@@ -96,7 +103,10 @@ def _find_entry(doc: dict, resource_type: str, name: str):
 def write_entry(
     project_dir: Path, manifest: dict, resource_type: str, name: str, entry: dict
 ) -> str:
-    path = _patch_file(project_dir, manifest, name) or _default_file(project_dir, manifest, name)
+    path = _patch_file(project_dir, manifest, name)
+    if not path and resource_type == "source" and "." in name:
+        path = _source_file(project_dir, manifest, name.split(".", 1)[0])
+    path = path or _default_file(project_dir, manifest, name)
     if path.exists():
         with path.open() as fh:
             doc = yaml_rt.load(fh) or {}
@@ -106,6 +116,14 @@ def write_entry(
     container, existing = _find_entry(doc, resource_type, name)
     if existing is not None:
         container[container.index(existing)] = entry
+    elif resource_type == "source" and "." in name:
+        source_name, _table = name.split(".", 1)
+        sources = doc.setdefault(_SECTION[resource_type], [])
+        source = next((s for s in sources if s.get("name") == source_name), None)
+        if source is None:
+            sources.append({"name": source_name, "tables": [entry]})
+        else:
+            source.setdefault("tables", []).append(entry)
     else:
         doc.setdefault(_SECTION[resource_type], []).append(entry)
     after = _dump(doc)
