@@ -25,12 +25,14 @@ Existing tools don't cover this:
 
 ## Goals
 
-1. **Progressive disclosure of model documentation** — an agent retrieves
+1. **Progressive disclosure of project documentation** — an agent retrieves
    exactly the tier of detail it needs, never a full YAML file or manifest.
+   All dbt object types are in scope: models, sources, seeds, snapshots,
+   exposures, macros, and tests.
 2. **Token-lean, guarded dbt CLI execution** — structured results, safe
    invocation, no console floods.
-3. **Structured YAML authoring** — create or update model property YAML
-   without the agent reading or rewriting large files.
+3. **Structured YAML authoring** — create or update property YAML for any
+   dbt object without the agent reading or rewriting large files.
 4. **A documentation channel optimized for agents** — a `meta.claude` block,
    token-dense and machine-shaped, kept separate from human-facing dbt
    properties.
@@ -41,8 +43,6 @@ beyond "dbt projects live somewhere under the workspace root".
 
 ## Non-goals (v1)
 
-- Write support for sources, exposures, seeds, or snapshots — models only.
-- Per-column disclosure sub-tiers — the columns tier is already bounded.
 - Caching beyond the in-process manifest — reload-on-stale is enough.
 - Semantic layer, Cloud API, or warehouse access — other tools own those.
 - Replacing the human docs workflow — vanilla dbt properties stay
@@ -67,8 +67,8 @@ On startup the server discovers dbt projects (any directory containing
 `dbt_packages/`, and hidden directories). Per project it lazily loads
 `target/manifest.json` into server memory and answers every read tool from
 it. The manifest is considered stale when it is older than the newest
-model/YAML file in the project; the server then re-runs `dbt parse` before
-answering.
+source or YAML file in the project; the server then re-runs `dbt parse`
+before answering.
 
 The agent never receives the manifest or a full YAML file — every tool
 returns a bounded slice.
@@ -85,23 +85,33 @@ Rejected alternatives:
 
 ### Read tools (progressive disclosure)
 
+Tools are node-generic: a "node" is any documented dbt object — model,
+source table, seed, snapshot, exposure, macro, or singular test.
+
 | Tool | Returns |
 | ---- | ------- |
-| `list_projects()` | Discovered projects: name, path, model count |
-| `list_models(project, subpath?, pattern?, stale_meta?)` | Model names + one-line summary each (tier 0) |
-| `get_model(name, detail)` | Tiered detail — see below |
+| `list_projects()` | Discovered projects: name, path, node counts by type |
+| `list_nodes(project, resource_type?, subpath?, pattern?, stale_meta?)` | Node names + one-line summary each (tier 0) |
+| `get_node(name, detail, columns?)` | Tiered detail — see below |
 | `lineage(name, direction, depth=1)` | Node names only, depth-capped |
-| `resolve(ref_or_source)` | ref/source string → model, file path, relation name |
+| `resolve(ref_or_source)` | ref/source string → node, file path, relation name |
 
-`get_model` tiers:
+`get_node` tiers:
 
-- `summary` (default): the `meta.claude` block if present, else a derived
-  fallback — first line of description, materialization, refs, declared
-  grain. Includes a staleness flag when the fingerprint mismatches.
-- `columns`: summary + column names, types (from manifest/catalog when
-  available), first line of each column description, tests.
-- `full`: the model's complete property entry. Explicitly opt-in; the tool
+- `summary` (default): the node's `meta.claude` block if present, else a
+  derived fallback — first line of description, materialization/loader,
+  refs, declared grain. Includes a staleness flag when the fingerprint
+  mismatches.
+- `columns`: summary + per-column detail — name, type (from
+  manifest/catalog when available), first line of the column description,
+  tests, and the column's own `meta.claude` block if present. The optional
+  `columns` filter restricts output to named columns so wide models don't
+  flood context.
+- `full`: the node's complete property entry. Explicitly opt-in; the tool
   description warns about cost.
+
+Tiers apply where they make sense per type: macros and exposures have no
+columns tier; sources and seeds have no lineage upstream.
 
 ### Exec tool (CLI wrap)
 
@@ -119,15 +129,18 @@ Rejected alternatives:
 
 ### Write tool (development side)
 
-`upsert_model_yaml(project, model, fields)`
+`upsert_yaml(project, resource_type, name, fields)`
 
+- Works for any resource type with property YAML: models, sources (source +
+  table addressing), seeds, snapshots, exposures, macros, singular tests.
 - `fields` is a structured patch: any of `description`, `columns` (add or
-  update by name), `tests`, `meta.claude`, `config` keys.
+  update by name, each column accepting its own `meta.claude`), `tests`,
+  `meta.claude`, `config` keys — whichever apply to the resource type.
 - Server edits with `ruamel.yaml` in round-trip mode — comments, key order,
   and anchors in untouched regions survive.
-- If the model has no property entry, the server creates one (in the
+- If the node has no property entry, the server creates one (in the
   project's conventional properties file location, configurable pattern;
-  default: sibling `_<model>.yml`).
+  default: sibling `_{name}.yml`).
 - Returns a unified diff of the change — the diff is what the agent and the
   human review, not the file.
 
@@ -140,29 +153,47 @@ Two documentation channels with different audiences:
 - **`meta.claude`** — written for agents: token-dense, structured, no prose
   niceties. Not meant to be pleasant to read.
 
-Schema (v1 — server validates only `v` and `fingerprint`; all other fields
-are free-form by convention):
+`meta.claude` attaches at two levels: the node, and each column. Node-level
+holds grain, keys, joins, and cross-cutting gotchas; column-level holds
+per-column semantics — enumerations, encoding quirks, caveats.
+
+Node-level schema (v1 — server validates only `v` and `fingerprint`; all
+other fields are free-form by convention):
 
 ```yaml
-meta:
-  claude:
-    v: 1
-    fingerprint: a1b2c3d4e5f6 # sha256[:12] of the model's SQL file
-    grain: one row per student per term
-    keys: [student_number, academic_year, term]
-    joins: { students: student_number, terms: [academic_year, term] }
-    gotchas:
-      - null term = year-long enrollment, not missing data
-    see: [int_extracts__student_enrollments]
+models:
+  - name: fct_enrollments
+    meta:
+      claude:
+        v: 1
+        fingerprint: a1b2c3d4e5f6 # sha256[:12] of the node's source file
+        grain: one row per student per term
+        keys: [student_number, academic_year, term]
+        joins: { students: student_number, terms: [academic_year, term] }
+        gotchas:
+          - null term = year-long enrollment, not missing data
+        see: [int_extracts__student_enrollments]
+    columns:
+      - name: exit_code
+        meta:
+          claude:
+            enum: { W: withdrew, G: graduated, T: transferred in-network }
+            gotchas:
+              - blank before 2021, not null-safe
 ```
 
-**Staleness:** `fingerprint` hashes the model's SQL source. On mismatch,
-`get_model` flags the block stale and `list_models(stale_meta=true)`
-enumerates regeneration targets.
+Column-level blocks are fully free-form — no `v` or `fingerprint`; the
+node-level fingerprint governs staleness for the whole entry (it hashes the
+node's source file — SQL for models/snapshots/tests, the seed file for
+seeds; sources and exposures, having no source file, use the property entry
+itself).
+
+**Staleness:** on fingerprint mismatch, `get_node` flags the block stale and
+`list_nodes(stale_meta=true)` enumerates regeneration targets.
 
 **Authoring:** a companion skill (shipped in this plugin) drives generation —
-the agent reads the model SQL and human docs, drafts the `meta.claude`
-content, writes it via `upsert_model_yaml`, and a human reviews the PR diff.
+the agent reads the node source and human docs, drafts the `meta.claude`
+content, writes it via `upsert_yaml`, and a human reviews the PR diff.
 Humans are never expected to hand-write token-optimized blocks; drift heals
 because generation is re-runnable against stale fingerprints.
 
@@ -170,7 +201,7 @@ because generation is re-runnable against stale fingerprints.
 
 - Parse failure → return dbt's first error message, not a traceback; read
   tools degrade to "project unparseable: {error}".
-- Unknown model → nearest-name suggestions.
+- Unknown node → nearest-name suggestions.
 - Write conflicts (file changed since manifest load) → re-read file, retry
   once, else fail with the diff that would have applied.
 - All tool errors are structured strings sized for an agent transcript,
@@ -178,8 +209,9 @@ because generation is re-runnable against stale fingerprints.
 
 ## Testing
 
-- A fixture dbt project in this repo (a handful of models exercising every
-  tier: documented, undocumented, stale meta, no property file).
+- A fixture dbt project in this repo exercising every tier and resource
+  type: documented and undocumented models, a source, a seed, a snapshot,
+  an exposure, stale meta, column-level meta, no property file.
 - pytest covers: tier outputs and their token bounds, staleness detection,
   ref/source resolution, YAML round-trip fidelity (comments survive an
   upsert), run-lock behavior, JSON-log parsing against recorded dbt output.
