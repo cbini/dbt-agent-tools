@@ -2188,3 +2188,17 @@ Give the user this snippet to add to `cbini/dotclaude`
 - Property-entry-based fingerprints for sources/exposures (spec §contract):
   `is_stale` returns `None` for nodes without a file checksum in v0.1; add
   entry-hash fingerprints when source/exposure meta.claude sees real use.
+
+Recorded at the final whole-branch review (spec clauses consciously not in
+v0.1 — defensible scope cuts, listed so the spec isn't read as fully
+delivered):
+
+- `list_nodes` `subpath?` filter (spec §Tool surface) — `pattern` is the
+  only narrowing knob, and `list_nodes` output is uncapped.
+- Snapshot node in the fixture project (spec §Testing) — `snapshot` is an
+  accepted resource_type with no test coverage.
+- Singular tests as first-class nodes (spec's node-generic scope) —
+  excluded from lookup and `list_nodes`.
+- Per-parameter schema descriptions (spec §Tool annotations, schemas, and
+  descriptions) — depth/limit bounds are enforced in code, not schema; the
+  `args` equals-form requirement (`--threads=4`) is undocumented to agents.
